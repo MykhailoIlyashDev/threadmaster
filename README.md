@@ -17,13 +17,13 @@ A lightweight library for effortless multithreading in Node.js applications.
 ## Installation
 
 ```bash
-npm install node-threads
+npm install threadmaster
 ```
 
 ## Basic Usage
 
 ```typescript
-const { run, Thread } = require('node-threads');
+const { run, Thread } = require('threadmaster');
 
 // Function to run in a separate thread
 const heavyComputation = (data) => {
@@ -141,7 +141,7 @@ The Thread object is available inside thread functions:
 Options for creating a thread pool:
 
 ```typescript
-const { ThreadPool } = require('node-threads');
+const { ThreadPool } = require('threadmaster');
 
 const pool = new ThreadPool({
   maxThreads: 4,              // Maximum number of threads (default: CPU count)
@@ -170,7 +170,7 @@ const options = {
 For more control, you can create and manage your own thread pool:
 
 ```typescript
-const { ThreadPool } = require('node-threads');
+const { ThreadPool } = require('threadmaster');
 
 const pool = new ThreadPool({ maxThreads: 4 });
 
@@ -200,7 +200,7 @@ pool.cleanup();
 The library provides custom error classes for different scenarios:
 
 ```typescript
-const { run, ThreadError, ThreadTimeoutError } = require('node-threads');
+const { run, ThreadError, ThreadTimeoutError } = require('threadmaster');
 
 try {
   const result = await run(fn, data).promise;
@@ -223,7 +223,7 @@ try {
 ### Retry Mechanism
 
 ```typescript
-const { run } = require('node-threads');
+const { run } = require('threadmaster');
 
 const result = await run(
   // Unreliable function
@@ -244,7 +244,7 @@ const result = await run(
 ### Result Caching
 
 ```typescript
-const { ThreadPool } = require('node-threads');
+const { ThreadPool } = require('threadmaster');
 
 const pool = new ThreadPool({ enableCaching: true });
 
@@ -270,7 +270,7 @@ const result2 = await pool.run(
 ### Processing Large Datasets
 
 ```typescript
-const { batch } = require('node-threads');
+const { batch } = require('threadmaster');
 
 // Process 1 million items in batches
 const items = Array.from({ length: 1000000 }, (_, i) => i);
