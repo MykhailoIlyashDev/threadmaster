@@ -8,6 +8,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
+import EventEmitter from 'events';
 
 // Type definitions
 export type ThreadFunction<T, R> = (data: T, options?: ThreadExecutionOptions) => R | Promise<R>;
@@ -31,6 +32,7 @@ export interface ThreadExecutionOptions {
 export interface ThreadResult<R> {
   promise: Promise<R>;
   cancel: () => void;
+  worker: Worker;
 }
 
 // Custom error classes
@@ -106,9 +108,11 @@ export class ThreadPool {
       const cacheKey = this.getCacheKey(fn, data);
       if (this.resultCache.has(cacheKey)) {
         const cachedResult = this.resultCache.get(cacheKey);
+        const dummyWorker = new EventEmitter() as unknown as Worker;
         return {
           promise: Promise.resolve(cachedResult),
-          cancel: () => {} // No-op for cached results
+          cancel: () => {}, // No-op for cached results.
+          worker: dummyWorker
         };
       }
     }
@@ -181,8 +185,8 @@ export class ThreadPool {
                 reject(error);
                 this.cleanupWorker(worker, timeoutId);
               }
-            } else if (message.type === 'progress' && options?.onProgress) {
-              options.onProgress(message.progress, message.message);
+            } else if (message.type === 'progress') {
+              // empty line
             }
           });
           
@@ -264,7 +268,7 @@ export class ThreadPool {
       }
     };
     
-    return { promise, cancel };
+    return { promise, cancel, worker: worker! };
   }
   
   /**
@@ -393,7 +397,6 @@ export class ThreadPool {
    */
   private createWorkerScript(id: string, fn: Function): void {
     const scriptPath = path.join(this.tempDir, `worker-${id}.js`);
-    
     const scriptContent = `
       const { parentPort, workerData, isMainThread } = require('worker_threads');
       
@@ -405,7 +408,7 @@ export class ThreadPool {
       // Get the function and data
       const fn = ${fn.toString()};
       const data = workerData.data;
-      const options = workerData.options || {};
+      // Не передаємо options, щоб уникнути проблем з клонуванням
       
       // Flag to track cancellation
       let isCancelled = false;
@@ -437,14 +440,8 @@ export class ThreadPool {
       // Execute the function
       (async () => {
         try {
-          // Add progress callback to options
-          const threadOptions = {
-            ...options,
-            onProgress: reportProgress
-          };
-          
-          // Execute the function
-          const result = await fn(data, threadOptions);
+          // Execute the function without passing options
+          const result = await fn(data);
           
           // Check if cancelled before returning
           if (isCancelled) {

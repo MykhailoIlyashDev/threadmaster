@@ -28,7 +28,6 @@ const { run, Thread } = require('threadmaster');
 // Function to run in a separate thread
 const heavyComputation = (data) => {
   let result = 0;
-  
   for (let i = 0; i < data.iterations; i++) {
     // Check if cancelled
     if (Thread.isCancelled()) {
@@ -43,29 +42,29 @@ const heavyComputation = (data) => {
     // Perform computation
     result += Math.sqrt(i);
   }
-  
   return { result };
 };
 
 // Run the function in a separate thread
 async function main() {
-  const { promise, cancel } = run(
+  const { promise, cancel, worker } = run(
     heavyComputation,
-    { iterations: 10000000 },
-    { 
-      onProgress: (progress, message) => {
-        console.log(`Progress: ${progress.toFixed(2)}% - ${message}`);
-      },
-      timeout: 5000 // 5 seconds
-    }
+    { iterations: 10000000 }
   );
   
+  // Subscribe to progress updates
+  worker.on('message', (message) => {
+    if (message.type === 'progress') {
+      console.log(`Progress: ${message.progress.toFixed(2)}% - ${message.message}`);
+    }
+  });
+
   // Optional: Cancel after 2 seconds
   setTimeout(() => {
     console.log('Cancelling...');
     cancel();
   }, 2000);
-  
+
   try {
     const result = await promise;
     console.log('Result:', result);
@@ -84,13 +83,11 @@ Core Functions
 Runs a function in a separate thread.
 
 ```typescript
-const { promise, cancel } = run(
+const { promise, cancel, worker } = run(
   (data) => data.x + data.y,
   { x: 5, y: 10 },
   { timeout: 1000 }
 );
-
-const result = await promise;
 ```
 
 **runAll(fn, dataItems, options)**
@@ -156,15 +153,58 @@ Options for executing a function in a thread:
 
 ```typescript
 const options = {
-  onProgress: (progress, message) => {
-    console.log(`${progress}% - ${message}`);
-  },
-  timeout: 5000,              // Timeout in milliseconds
-  priority: 'high',           // Priority: 'high', 'normal', 'low'
-  retries: 3,                 // Number of retry attempts
-  retryDelay: 1000            // Delay between retries in milliseconds
+  timeout: 5000, // Timeout in milliseconds
+  priority: 'high', // Priority: 'high', 'normal', 'low'
+  retries: 3, // Number of retry attempts
+  retryDelay: 1000 // Delay between retries in milliseconds
 };
 ```
+
+### Handling Worker Messages
+To track progress and other messages from the worker thread, subscribe to the worker's message event:
+
+```typescript
+const { promise, worker } = run(heavyComputation, data);
+
+worker.on('message', (message) => {
+  if (message.type === 'progress') {
+    console.log(`Progress: ${message.progress.toFixed(2)}% - ${message.message}`);
+  }
+});
+
+const result = await promise;
+```
+### Progress Tracking
+
+```typescript
+const { batch } = require('threadmaster');
+
+// Process 1 million items in batches
+const items = Array.from({ length: 1000000 }, (_, i) => i);
+
+const { promise, worker } = batch(
+  items,
+  (batch) => {
+    // Process each batch in a separate thread
+    return batch.map(x => x * x);
+  },
+  10000 // 10,000 items per batch
+);
+
+// Track progress
+worker.on('message', (message) => {
+  if (message.type === 'progress') {
+    console.log(`Processing: ${message.progress.toFixed(2)}%`);
+  }
+});
+
+const results = await promise;
+```
+### Limitations
+
+- **Function Serialization**: Functions with closures cannot be passed between threads. This is a limitation of Node.js structured cloning algorithm.
+- **Callback Functions**: Instead of passing callback functions in options, subscribe to worker messages to handle events like progress updates.
+
 
 ### ThreadPool Class
 For more control, you can create and manage your own thread pool:
@@ -175,8 +215,18 @@ const { ThreadPool } = require('threadmaster');
 const pool = new ThreadPool({ maxThreads: 4 });
 
 // Run a function in the pool
-const result1 = await pool.run(fn1, data1).promise;
-const result2 = await pool.run(fn2, data2).promise;
+const { promise: promise1, worker: worker1 } = pool.run(fn1, data1);
+const { promise: promise2, worker: worker2 } = pool.run(fn2, data2);
+
+// Subscribe to worker messages
+worker1.on('message', (message) => {
+  if (message.type === 'progress') {
+    console.log(`Task 1 progress: ${message.progress}%`);
+  }
+});
+
+const result1 = await promise1;
+const result2 = await promise2;
 
 // Clean up when done
 pool.cleanup();
@@ -270,24 +320,23 @@ const result2 = await pool.run(
 ### Processing Large Datasets
 
 ```typescript
-const { batch } = require('threadmaster');
-
-// Process 1 million items in batches
-const items = Array.from({ length: 1000000 }, (_, i) => i);
-
-const results = await batch(
+const { promise, worker } = batch(
   items,
   (batch) => {
     // Process each batch in a separate thread
     return batch.map(x => x * x);
   },
-  10000, // 10,000 items per batch
-  {
-    onProgress: (progress) => {
-      console.log(`Processing: ${progress.toFixed(2)}%`);
-    }
-  }
+  10000 // 10,000 items per batch
 );
+
+// Track progress
+worker.on('message', (message) => {
+  if (message.type === 'progress') {
+    console.log(`Processing: ${message.progress.toFixed(2)}%`);
+  }
+});
+
+const results = await promise;
 ```
 ### Best Practices
 
